@@ -1,0 +1,104 @@
+# CNN com pre preocessamento com kernels, pooling, e flattening
+# Tipo sequencial densa
+#usando extracao de caracteristicas
+
+#import ibm_db
+#conn_a = ibm_db.connect("<server info>;", "", "")
+
+import matplotlib.pyplot as plt 
+import pyodbc
+import seaborn as sns 
+import zipfile
+import numpy as np
+import cv2
+import keras
+import tensorflow as tf
+from keras.models import Sequential
+from keras.layers import Conv2D, MaxPool2D, Flatten, Dense
+from keras.preprocessing.image import ImageDataGenerator
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix
+from keras.models import save_model
+
+#carregamento das imagens
+#caminho para o arquivo zip
+path = '/Users/sofialinheira/Desktop/udemy/cnn/homer_bart_2.zip'
+zip_object = zipfile.ZipFile(file=path, mode='r')
+zip_object.extractall('./')
+zip_object.close()
+# upa p a pasta /Users/sofialinheira/Desktop/udemy/homer_bart_2 nao sei pq
+# para uso com o tf é nescessario ter as imagens de teste e treinamento em pastas separadas
+
+#---------base de dados treinamento------------------------------------------
+gerador_treinamento = ImageDataGenerator(rescale=1./255,rotation_range=7,horizontal_flip=True,zoom_range = 0.2)# gera mudancas nas imagens
+dataset_treinamento = gerador_treinamento.flow_from_directory('/Users/sofialinheira/Desktop/udemy/homer_bart_2/training_set',target_size=(64,64),batch_size=8,class_mode='categorical',shuffle=True) 
+print(dataset_treinamento.classes) #lista as classes da pasta
+print(dataset_treinamento.class_indices) # mostra qual numero foi atribuido para cada classe
+
+# ------------ teste --------------------------------------------------------
+gerador_teste = ImageDataGenerator(rescale=1./255) #imagens para visualizar os resultados
+dataset_teste = gerador_teste.flow_from_directory('/Users/sofialinheira/Desktop/udemy/homer_bart_2/test_set',target_size=(64,64),batch_size=1,class_mode='categorical',shuffle=False)
+
+#-------------- treinamento --------------------------------------------------
+network=Sequential()
+#primaira camada de convolucao
+network.add(Conv2D(filters=32,kernel_size=(3,3),activation='relu',input_shape=(64,64,3)))
+network.add(MaxPool2D(pool_size=(2,2)))
+
+#segunda camada de convolucao
+network.add(Conv2D(filters=32,kernel_size=(3,3),activation='relu')) 
+network.add(MaxPool2D(pool_size=(2,2)))
+
+#terceira camada de convolucao
+network.add(Conv2D(filters=32,kernel_size=(3,3),activation='relu')) 
+network.add(MaxPool2D(pool_size=(2,2)))
+
+#camada flattening
+network.add(Flatten())
+
+#camada densa
+# IMPORTANTE (entradas+classes)/2 (1152+2)/2=577  neuronios=577
+network.add(Dense(units=577,activation='relu'))
+
+#segunda camada densa
+network.add(Dense(units=577,activation='relu'))
+
+#camada de saida
+network.add(Dense(units=2,activation='softmax'))
+
+#compila a rede neural
+network.compile(optimizer='Adam',loss='categorical_crossentropy', metrics=['accuracy'])
+
+# ------- treinamento --------------------------------
+historico=network.fit(dataset_treinamento, epochs=50)
+
+#--------- avaliacao da rede neural---------------
+previsoes = network.predict(dataset_teste)
+
+# buscar o inde onde esta o maior valor de previsao
+previsao = np.argmax(previsoes,axis=1)
+print(previsoes)
+accuracy_score(dataset_teste.classes,previsoes)
+
+cm = confusion_matrix(dataset_teste.classes,previsoes)
+sns.heatmap(cm,annot=True)
+
+print(classification_report(dataset_teste.classes,previsoes))
+
+#------ salvar e carregar a rede ----------------------------
+model_json = network.to_json()
+with open('network.json', 'w') as json_file:
+    json_file.write(model_json)
+
+network_saved = save_model(network, '/Users/sofialinheira/Desktop/udemy/homer_bart_2/weights.hdf5')
+
+with open('network.json', 'r') as json_file:
+    json_saved_model = json_file.read()
+json_saved_model 
+
+network_loaded = tf.keras.models.model_from_json(json_saved_model)
+network_loaded.load_weights('weights.hdf5')
+network_loaded.compile(loss = 'categorical_crossentropy', optimiser='Adam', matrics= ['accuracy'])
+
+network_loaded.summary()
